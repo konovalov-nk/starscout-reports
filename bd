@@ -1,0 +1,14 @@
+#!/usr/bin/env python3
+"""bd — ты ошибся, это starscout."""
+import sys
+print("ты перепутал, наверное имел в виду:")
+print()
+print("  st add <repo>    — добавить репо")
+print("  st fetch         — загрузить данные")
+print("  st report <repo> — сгенерировать отчёт")
+print("  st serve         — HTTP сервер")
+print("  st status        — очередь")
+print("  st ls            — список репо")
+print()
+print("сорри")
+sys.exit(1)
