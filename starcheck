@@ -1,0 +1,423 @@
+#!/usr/bin/env python3
+"""
+starcheck — single-repo GitHub star forensics tool.
+Fetches star data via GitHub API (cached locally), computes metrics,
+and generates an HTML report.
+
+Usage:
+  ./starcheck <owner/repo>
+  ./starcheck --serve        # serve the report directory via HTTP
+  GITHUB_TOKEN=ghp_xxx ./starcheck owner/repo
+"""
+
+import json, os, sys, time, re
+import hashlib, pathlib
+from datetime import datetime, timezone
+from collections import Counter
+
+CACHE_DIR = pathlib.Path(__file__).parent / ".starcheck_cache"
+REPORTS_DIR = pathlib.Path(__file__).parent / "starcheck_reports"
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN") or ""
+CACHE_TTL = 3600  # 1 hour
+
+os.makedirs(CACHE_DIR, exist_ok=True)
+os.makedirs(REPORTS_DIR, exist_ok=True)
+
+def gh_api(path: str) -> dict | list:
+    """Single GitHub API call."""
+    import urllib.request
+    url = f"https://api.github.com{path}"
+    headers = {"User-Agent": "starcheck"}
+    if GITHUB_TOKEN:
+        headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+    req = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(req, timeout=10) as r:
+        return json.loads(r.read())
+
+def gh_api_paginate(path: str, accept: str = "", max_pages: int = 50) -> list[dict]:
+    """Paginate through list endpoints."""
+    import urllib.request
+    results = []
+    page = 1
+    while True:
+        sep = "&" if "?" in path else "?"
+        url = f"https://api.github.com{path}{sep}page={page}"
+        headers = {"User-Agent": "starcheck"}
+        if GITHUB_TOKEN:
+            headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+        if accept:
+            headers["Accept"] = accept
+        req = urllib.request.Request(url, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=8) as r:
+                data = json.loads(r.read())
+        except Exception:
+            break
+        if not data:
+            break
+        results.extend(data)
+        if len(data) < 100:
+            break
+        page += 1
+        if page > max_pages:
+            break
+        time.sleep(0.02)
+    return results
+
+def cache_key(repo: str, name: str) -> pathlib.Path:
+    safe = repo.replace("/", "_")
+    return CACHE_DIR / f"{safe}_{name}.json"
+
+def load_cache(repo: str, name: str) -> dict | None:
+    p = cache_key(repo, name)
+    if p.exists():
+        data = json.loads(p.read_text())
+        if time.time() - data.get("_ts", 0) < CACHE_TTL:
+            return data
+    return None
+
+def save_cache(repo: str, name: str, data):
+    data["_ts"] = time.time()
+    cache_key(repo, name).write_text(json.dumps(data, default=str))
+
+def get_repo_info(repo: str) -> dict:
+    cached = load_cache(repo, "info")
+    if cached:
+        return cached
+    data = gh_api(f"/repos/{repo}")
+    save_cache(repo, "info", data)
+    return data
+
+def get_star_timeline(repo: str) -> Counter:
+    cached = load_cache(repo, "timeline")
+    if cached:
+        return Counter(cached["dates"])
+    stars = gh_api_paginate(
+        f"/repos/{repo}/stargazers?per_page=100",
+        accept="application/vnd.github.v3.star+json",
+        max_pages=200
+    )
+    dates = Counter()
+    for s in stars:
+        if s.get("starred_at"):
+            dates[s["starred_at"][:10]] += 1
+    save_cache(repo, "timeline", {"dates": dict(dates)})
+    return dates
+
+def get_stargazer_logins(repo: str, max_sample: int = 10000) -> list[str]:
+    cached = load_cache(repo, "logins")
+    if cached:
+        return cached["logins"][:max_sample]
+    stars = gh_api_paginate(f"/repos/{repo}/stargazers?per_page=100", max_pages=100)
+    logins = [s["login"] for s in stars if "login" in s][:max_sample]
+    save_cache(repo, "logins", {"logins": logins})
+    return logins
+
+def get_user_profiles(logins: list[str], max_n: int = 200) -> list[dict]:
+    cached = load_cache("_batch", hashlib.md5(str(logins[:max_n]).encode()).hexdigest()[:12])
+    if cached:
+        return cached["profiles"]
+    results = []
+    for login in logins[:max_n]:
+        time.sleep(0.08)
+        try:
+            u = gh_api(f"/users/{login}")
+            results.append(u)
+        except:
+            pass
+    save_cache("_batch", hashlib.md5(str(logins[:max_n]).encode()).hexdigest()[:12], {"profiles": results})
+    return results
+
+def analyze(repo: str) -> dict:
+    info = get_repo_info(repo)
+    if "message" in info:
+        return {"error": info["message"]}
+
+    timeline = get_star_timeline(repo)
+    logins = get_stargazer_logins(repo)
+    profiles = get_user_profiles(logins)
+
+    now = datetime(2026, 6, 20)
+    age_buckets = {"0-1yr": 0, "1-3yr": 0, "3-5yr": 0, "5-10yr": 0, "10-15yr": 0, "15+yr": 0}
+    ages = []
+    zero_repos = zero_followers = zero_all = low_qual = 0
+    for u in profiles:
+        if "created_at" not in u: continue
+        created = datetime.fromisoformat(u["created_at"][:10])
+        age = (now - created).days / 365.25
+        ages.append(age)
+        if age < 1: age_buckets["0-1yr"] += 1
+        elif age < 3: age_buckets["1-3yr"] += 1
+        elif age < 5: age_buckets["3-5yr"] += 1
+        elif age < 10: age_buckets["5-10yr"] += 1
+        elif age < 15: age_buckets["10-15yr"] += 1
+        else: age_buckets["15+yr"] += 1
+        repos = u.get("public_repos", 0)
+        followers = u.get("followers", 0)
+        if repos == 0: zero_repos += 1
+        if followers == 0: zero_followers += 1
+        if repos == 0 and followers == 0: zero_all += 1
+        if repos <= 1 and followers <= 2: low_qual += 1
+
+    n_profiles = len(profiles)
+    total_stars = info.get("stargazers_count", 0)
+    api_stars = sum(timeline.values())
+
+    # Market pricing tiers (from CMU 2026 paper)
+    market_max_age_yrs = 5
+    market_buyable = sum(v for k, v in age_buckets.items()
+                          if float(k.split("-")[0].split("+")[0]) < market_max_age_yrs
+                          or k == "3-5yr")
+    # Actually let's just sum 0-1yr + 1-3yr + 3-5yr
+    buyable_pct = (age_buckets["0-1yr"] + age_buckets["1-3yr"] + age_buckets["3-5yr"]) / max(n_profiles, 1) * 100
+    buyable_cost_low = total_stars * buyable_pct / 100 * 0.03  # bot price
+    buyable_cost_high = total_stars * buyable_pct / 100 * 0.85  # premium price
+
+    return {
+        "repo": repo,
+        "total_stars": total_stars,
+        "api_stars": api_stars,
+        "forks": info.get("forks_count", 0),
+        "open_issues": info.get("open_issues_count", 0),
+        "watchers": info.get("subscribers_count", 0),
+        "created_at": info.get("created_at", "")[:10],
+        "description": info.get("description", ""),
+        "language": info.get("language", ""),
+        "topics": info.get("topics", []),
+        "fork_star_ratio": round(info.get("forks_count", 0) / max(total_stars, 1) * 100, 1),
+        "watcher_star_ratio": round(info.get("subscribers_count", 0) / max(total_stars, 1) * 100, 1),
+        "star_timeline": dict(timeline),
+        "n_stargazer_sample": n_profiles,
+        "age_buckets": age_buckets,
+        "zero_repos_pct": round(zero_repos / max(n_profiles, 1) * 100, 1),
+        "zero_followers_pct": round(zero_followers / max(n_profiles, 1) * 100, 1),
+        "empty_accounts_pct": round(zero_all / max(n_profiles, 1) * 100, 1),
+        "low_quality_pct": round(low_qual / max(n_profiles, 1) * 100, 1),
+        "buyable_pct": round(buyable_pct, 1),
+        "buyable_cost_low": round(buyable_cost_low),
+        "buyable_cost_high": round(buyable_cost_high),
+    }
+
+def generate_html(d: dict) -> str:
+    if "error" in d:
+        return f"<html><body><h1>Error</h1><p>{d['error']}</p></body></html>"
+
+    tl = d["star_timeline"]
+    tl_keys = json.dumps(list(tl.keys()))
+    tl_vals = json.dumps(list(tl.values()))
+    ab = d["age_buckets"]
+    ab_labels = json.dumps(list(ab.keys()))
+    ab_vals = json.dumps(list(ab.values()))
+    ab_pcts = json.dumps([round(v/d["n_stargazer_sample"]*100,1) for v in ab.values()])
+
+    stars_total = d["total_stars"]
+    buyable_count = round(stars_total * d["buyable_pct"] / 100)
+    beyond_market = stars_total - buyable_count
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StarCheck: {d['repo']}</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#e6edf3;line-height:1.6}}
+.container{{max-width:960px;margin:0 auto;padding:24px 16px}}
+.header{{text-align:center;padding:48px 0 32px}}
+.header h1{{font-size:2rem;margin-bottom:8px}}
+.header .subtitle{{color:#8b949e;font-size:1.1rem}}
+.badge{{display:inline-block;background:#21262d;border:1px solid #30363d;border-radius:6px;padding:4px 12px;font-size:.85rem;color:#8b949e;margin:4px}}
+.badge.danger{{border-color:#f85149;color:#f85149}}
+.badge.warn{{border-color:#d29922;color:#d29922}}
+.badge.ok{{border-color:#3fb950;color:#3fb950}}
+.metrics{{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:24px 0}}
+.metric-card{{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:20px;text-align:center}}
+.metric-card .value{{font-size:2rem;font-weight:700}}
+.metric-card .label{{color:#8b949e;font-size:.85rem;margin-top:4px}}
+.metric-card .value.red{{color:#f85149}}
+.metric-card .value.yellow{{color:#d29922}}
+.metric-card .value.green{{color:#3fb950}}
+.chart-container{{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:20px;margin:24px 0}}
+.chart-container h3{{margin-bottom:16px;color:#f0f6fc}}
+.section{{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:24px;margin:24px 0}}
+.section h3{{color:#f0f6fc;margin-bottom:12px}}
+.section p{{color:#8b949e;margin-bottom:8px}}
+.progress-bar{{background:#21262d;border-radius:4px;height:24px;margin:8px 0;overflow:hidden}}
+.progress-fill{{height:100%;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:600}}
+.footer{{text-align:center;color:#484f58;font-size:.85rem;padding:32px 0 16px;border-top:1px solid #21262d;margin-top:32px}}
+.footer a{{color:#58a6ff;text-decoration:none}}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>🔍 StarCheck</h1>
+    <div class="subtitle">GitHub Star Forensics</div>
+    <p style="margin-top:8px"><a href="https://github.com/{d['repo']}" style="color:#58a6ff;font-size:1.1rem">{d['repo']}</a></p>
+    <div style="margin-top:12px">
+      <span class="badge">{d['total_stars']:,} ⭐ stars</span>
+      <span class="badge">{d['forks']:,} 🍴 forks</span>
+      <span class="badge">{'danger' if d['fork_star_ratio'] > 5 else 'ok'} Fork/Star {d['fork_star_ratio']}%</span>
+      <span class="badge">{'danger' if d['watcher_star_ratio'] < 1 else 'ok'} Watch/Star {d['watcher_star_ratio']}%</span>
+      <span class="badge">Created {d['created_at']}</span>
+    </div>
+    <p style="color:#8b949e;margin-top:8px;font-size:.9rem">{d['description']}</p>
+  </div>
+
+  <div class="metrics">
+    <div class="metric-card">
+      <div class="value {'red' if d['fork_star_ratio'] > 7 else 'green'}">{d['fork_star_ratio']}%</div>
+      <div class="label">🍴 Fork/Star ratio (normal: 1-5%)</div>
+    </div>
+    <div class="metric-card">
+      <div class="value {'red' if d['watcher_star_ratio'] < 1 else 'green'}">{d['watcher_star_ratio']}%</div>
+      <div class="label">👁 Watch/Star ratio (normal: 1-5%)</div>
+    </div>
+    <div class="metric-card">
+      <div class="value {'red' if d['zero_followers_pct'] > 20 else 'yellow' if d['zero_followers_pct'] > 10 else 'green'}">{d['zero_followers_pct']}%</div>
+      <div class="label">👤 Stargazers with 0 followers</div>
+    </div>
+    <div class="metric-card">
+      <div class="value {'red' if d['empty_accounts_pct'] > 10 else 'yellow' if d['empty_accounts_pct'] > 5 else 'green'}">{d['empty_accounts_pct']}%</div>
+      <div class="label">🤖 Empty accounts (0 repos, 0 followers)</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>📈 Star timeline ({d['api_stars']:,} stars via API)</h3>
+    <canvas id="starChart" height="280"></canvas>
+  </div>
+
+  <div class="section">
+    <h3>📊 Age distribution of stargazers (sample: {d['n_stargazer_sample']})</h3>
+    <canvas id="ageChart" height="250"></canvas>
+    <div style="margin-top:16px;background:#1c2128;border-radius:6px;padding:16px">
+      <p style="color:#e6edf3;font-weight:600;margin-bottom:8px">Market context</p>
+      <p style="color:#8b949e;font-size:.9rem">Fake star market max account age: <strong>~5 years</strong> (premium tier). Accounts 5+ years old cannot be bought at scale — they are real users.</p>
+      <div style="display:flex;gap:16px;margin-top:12px;flex-wrap:wrap">
+        <div style="background:#21262d;border-radius:6px;padding:12px;flex:1;min-width:150px;text-align:center;border:1px solid #3fb950">
+          <div style="font-size:1.5rem;font-weight:700;color:#3fb950">{d['n_stargazer_sample'] - round(d['n_stargazer_sample']*d['buyable_pct']/100)}</div>
+          <div style="color:#8b949e;font-size:.85rem">Accounts 5+ yr (beyond market)</div>
+        </div>
+        <div style="background:#21262d;border-radius:6px;padding:12px;flex:1;min-width:150px;text-align:center;border:1px solid #d29922">
+          <div style="font-size:1.5rem;font-weight:700;color:#d29922">{round(d['n_stargazer_sample']*d['buyable_pct']/100)}</div>
+          <div style="color:#8b949e;font-size:.85rem">Accounts 0-5 yr (market-buyable)</div>
+        </div>
+      </div>
+      <div style="margin-top:12px">
+        <p style="color:#8b949e;font-size:.9rem">
+          If all 0-5yr stars were purchased:<br>
+          <strong>${d['buyable_cost_low']:,}</strong> (bot pricing) – <strong>${d['buyable_cost_high']:,}</strong> (premium pricing)
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>📊 Account quality (sample: {d['n_stargazer_sample']})</h3>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+      <div>
+        <div style="text-align:center;margin-bottom:6px;color:#d29922;font-size:1.2rem">{d['zero_followers_pct']}%</div>
+        <div class="progress-bar"><div class="progress-fill" style="width:{d['zero_followers_pct']}%;background:#d29922">{d['zero_followers_pct']}%</div></div>
+        <div style="color:#8b949e;font-size:.85rem;text-align:center">0 followers</div>
+      </div>
+      <div>
+        <div style="text-align:center;margin-bottom:6px;color:#d29922;font-size:1.2rem">{d['zero_repos_pct']}%</div>
+        <div class="progress-bar"><div class="progress-fill" style="width:{d['zero_repos_pct']}%;background:#d29922">{d['zero_repos_pct']}%</div></div>
+        <div style="color:#8b949e;font-size:.85rem;text-align:center">0 public repos</div>
+      </div>
+      <div>
+        <div style="text-align:center;margin-bottom:6px;color:#f85149;font-size:1.2rem">{d['empty_accounts_pct']}%</div>
+        <div class="progress-bar"><div class="progress-fill" style="width:{d['empty_accounts_pct']}%;background:#f85149">{d['empty_accounts_pct']}%</div></div>
+        <div style="color:#8b949e;font-size:.85rem;text-align:center">Empty (0 repos, 0 followers)</div>
+      </div>
+      <div>
+        <div style="text-align:center;margin-bottom:6px;color:#f85149;font-size:1.2rem">{d['low_quality_pct']}%</div>
+        <div class="progress-bar"><div class="progress-fill" style="width:{d['low_quality_pct']}%;background:#f85149">{d['low_quality_pct']}%</div></div>
+        <div style="color:#8b949e;font-size:.85rem;text-align:center">Low quality (≤1 repo, ≤2 followers)</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    Generated by <a href="https://github.com/hehao98/starscout">StarScout/starcheck</a> · {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}
+  </div>
+</div>
+
+<script>
+new Chart(document.getElementById('starChart'), {{
+  type: 'bar',
+  data: {{
+    labels: {tl_keys},
+    datasets: [{{
+      label: 'Stars per day',
+      data: {tl_vals},
+      backgroundColor: {tl_vals}.map(v => v > 3000 ? '#f85149' : v > 1000 ? '#d29922' : '#58a6ff'),
+      borderRadius: 3,
+    }}]
+  }},
+  options: {{
+    responsive: true,
+    plugins: {{legend:{{display:false}}}},
+    scales: {{
+      x: {{ticks:{{color:'#8b949e',maxRotation:45}},grid:{{color:'#21262d'}}}},
+      y: {{ticks:{{color:'#8b949e'}},grid:{{color:'#21262d'}},beginAtZero:true}}
+    }}
+  }}
+}});
+
+new Chart(document.getElementById('ageChart'), {{
+  type: 'bar',
+  data: {{
+    labels: {ab_labels},
+    datasets: [{{
+      label: 'Accounts',
+      data: {ab_pcts},
+      backgroundColor: ['#d29922','#d29922','#d29922','#58a6ff','#58a6ff','#3fb950'],
+      borderRadius: 3,
+    }}]
+  }},
+  options: {{
+    responsive: true,
+    plugins: {{legend:{{display:false}}}},
+    scales: {{
+      x: {{ticks:{{color:'#8b949e'}},grid:{{color:'#21262d'}}}},
+      y: {{ticks:{{color:'#8b949e',callback:v=>v+'%'}},grid:{{color:'#21262d'}},beginAtZero:true,max:60}}
+    }}
+  }}
+}});
+</script>
+</body>
+</html>"""
+
+def main():
+    args = sys.argv[1:]
+    if not args:
+        print(__doc__)
+        sys.exit(1)
+
+    if args[0] == "--serve":
+        import http.server, socketserver
+        port = int(args[1]) if len(args) > 1 else 8080
+        os.chdir(REPORTS_DIR)
+        handler = http.server.SimpleHTTPRequestHandler
+        with socketserver.TCPServer(("", port), handler) as httpd:
+            print(f"Serving reports at http://localhost:{port}")
+            httpd.serve_forever()
+        return
+
+    for repo in args:
+        if args[0] == "--serve":
+            break
+        print(f"Analyzing {repo}...")
+        d = analyze(repo)
+        safe = repo.replace("/", "_")
+        html = generate_html(d)
+        path = REPORTS_DIR / f"{safe}.html"
+        path.write_text(html)
+        print(f"Report: {path}")
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StarCheck: zarazhangrui/frontend-slides</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#e6edf3;line-height:1.6}
+.container{max-width:960px;margin:0 auto;padding:24px 16px}
+.header{text-align:center;padding:48px 0 32px}
+.header h1{font-size:2rem;margin-bottom:8px}
+.header .subtitle{color:#8b949e;font-size:1.1rem}
+.badge{display:inline-block;background:#21262d;border:1px solid #30363d;border-radius:6px;padding:4px 12px;font-size:.85rem;color:#8b949e;margin:4px}
+.badge.danger{border-color:#f85149;color:#f85149}
+.badge.warn{border-color:#d29922;color:#d29922}
+.badge.ok{border-color:#3fb950;color:#3fb950}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:24px 0}
+.metric-card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:20px;text-align:center}
+.metric-card .value{font-size:2rem;font-weight:700}
+.metric-card .label{color:#8b949e;font-size:.85rem;margin-top:4px}
+.metric-card .value.red{color:#f85149}
+.metric-card .value.yellow{color:#d29922}
+.metric-card .value.green{color:#3fb950}
+.chart-container{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:20px;margin:24px 0}
+.chart-container h3{margin-bottom:16px;color:#f0f6fc}
+.section{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:24px;margin:24px 0}
+.section h3{color:#f0f6fc;margin-bottom:12px}
+.section p{color:#8b949e;margin-bottom:8px}
+.progress-bar{background:#21262d;border-radius:4px;height:24px;margin:8px 0;overflow:hidden}
+.progress-fill{height:100%;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:600}
+.footer{text-align:center;color:#484f58;font-size:.85rem;padding:32px 0 16px;border-top:1px solid #21262d;margin-top:32px}
+.footer a{color:#58a6ff;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>🔍 StarCheck</h1>
+    <div class="subtitle">GitHub Star Forensics</div>
+    <p style="margin-top:8px"><a href="https://github.com/zarazhangrui/frontend-slides" style="color:#58a6ff;font-size:1.1rem">zarazhangrui/frontend-slides</a></p>
+    <div style="margin-top:12px">
+      <span class="badge">23,555 ⭐ stars</span>
+      <span class="badge">1,920 🍴 forks</span>
+      <span class="badge">danger Fork/Star 8.2%</span>
+      <span class="badge">danger Watch/Star 0.4%</span>
+      <span class="badge">Created 2026-01-28</span>
+    </div>
+    <p style="color:#8b949e;margin-top:8px;font-size:.9rem">Create beautiful slides on the web using a coding agent's frontend skills</p>
+  </div>
+
+  <div class="metrics">
+    <div class="metric-card">
+      <div class="value red">8.2%</div>
+      <div class="label">🍴 Fork/Star ratio (normal: 1-5%)</div>
+    </div>
+    <div class="metric-card">
+      <div class="value red">0.4%</div>
+      <div class="label">👁 Watch/Star ratio (normal: 1-5%)</div>
+    </div>
+    <div class="metric-card">
+      <div class="value yellow">18.0%</div>
+      <div class="label">👤 Stargazers with 0 followers</div>
+    </div>
+    <div class="metric-card">
+      <div class="value green">2.5%</div>
+      <div class="label">🤖 Empty accounts (0 repos, 0 followers)</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>📈 Star timeline (23,556 stars via API)</h3>
+    <canvas id="starChart" height="280"></canvas>
+  </div>
+
+  <div class="section">
+    <h3>📊 Age distribution of stargazers (sample: 200)</h3>
+    <canvas id="ageChart" height="250"></canvas>
+    <div style="margin-top:16px;background:#1c2128;border-radius:6px;padding:16px">
+      <p style="color:#e6edf3;font-weight:600;margin-bottom:8px">Market context</p>
+      <p style="color:#8b949e;font-size:.9rem">Fake star market max account age: <strong>~5 years</strong> (premium tier). Accounts 5+ years old cannot be bought at scale — they are real users.</p>
+      <div style="display:flex;gap:16px;margin-top:12px;flex-wrap:wrap">
+        <div style="background:#21262d;border-radius:6px;padding:12px;flex:1;min-width:150px;text-align:center;border:1px solid #3fb950">
+          <div style="font-size:1.5rem;font-weight:700;color:#3fb950">133</div>
+          <div style="color:#8b949e;font-size:.85rem">Accounts 5+ yr (beyond market)</div>
+        </div>
+        <div style="background:#21262d;border-radius:6px;padding:12px;flex:1;min-width:150px;text-align:center;border:1px solid #d29922">
+          <div style="font-size:1.5rem;font-weight:700;color:#d29922">67</div>
+          <div style="color:#8b949e;font-size:.85rem">Accounts 0-5 yr (market-buyable)</div>
+        </div>
+      </div>
+      <div style="margin-top:12px">
+        <p style="color:#8b949e;font-size:.9rem">
+          If all 0-5yr stars were purchased:<br>
+          <strong>$237</strong> (bot pricing) – <strong>$6,707</strong> (premium pricing)
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>📊 Account quality (sample: 200)</h3>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+      <div>
+        <div style="text-align:center;margin-bottom:6px;color:#d29922;font-size:1.2rem">18.0%</div>
+        <div class="progress-bar"><div class="progress-fill" style="width:18.0%;background:#d29922">18.0%</div></div>
+        <div style="color:#8b949e;font-size:.85rem;text-align:center">0 followers</div>
+      </div>
+      <div>
+        <div style="text-align:center;margin-bottom:6px;color:#d29922;font-size:1.2rem">7.0%</div>
+        <div class="progress-bar"><div class="progress-fill" style="width:7.0%;background:#d29922">7.0%</div></div>
+        <div style="color:#8b949e;font-size:.85rem;text-align:center">0 public repos</div>
+      </div>
+      <div>
+        <div style="text-align:center;margin-bottom:6px;color:#f85149;font-size:1.2rem">2.5%</div>
+        <div class="progress-bar"><div class="progress-fill" style="width:2.5%;background:#f85149">2.5%</div></div>
+        <div style="color:#8b949e;font-size:.85rem;text-align:center">Empty (0 repos, 0 followers)</div>
+      </div>
+      <div>
+        <div style="text-align:center;margin-bottom:6px;color:#f85149;font-size:1.2rem">9.0%</div>
+        <div class="progress-bar"><div class="progress-fill" style="width:9.0%;background:#f85149">9.0%</div></div>
+        <div style="color:#8b949e;font-size:.85rem;text-align:center">Low quality (≤1 repo, ≤2 followers)</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    Generated by <a href="https://github.com/hehao98/starscout">StarScout/starcheck</a> · 2026-06-28 08:15 UTC
+  </div>
+</div>
+
+<script>
+new Chart(document.getElementById('starChart'), {
+  type: 'bar',
+  data: {
+    labels: ["2026-01-28", "2026-01-29", "2026-01-30", "2026-01-31", "2026-02-01", "2026-02-02", "2026-02-03", "2026-02-04", "2026-02-05", "2026-02-06", "2026-02-07", "2026-02-08", "2026-02-09", "2026-02-10", "2026-02-11", "2026-02-12", "2026-02-13", "2026-02-14", "2026-02-15", "2026-02-16", "2026-02-17", "2026-02-18", "2026-02-19", "2026-02-20", "2026-02-21", "2026-02-22", "2026-02-23", "2026-02-24", "2026-02-25", "2026-02-26", "2026-02-27", "2026-02-28", "2026-03-01", "2026-03-02", "2026-03-03", "2026-03-04", "2026-03-05", "2026-03-06", "2026-03-07", "2026-03-08", "2026-03-09", "2026-03-10", "2026-03-11", "2026-03-12", "2026-03-13", "2026-03-14", "2026-03-15", "2026-03-16", "2026-03-17", "2026-03-18", "2026-03-19", "2026-03-20", "2026-03-21", "2026-03-22", "2026-03-23", "2026-03-24", "2026-03-25", "2026-03-26", "2026-03-27", "2026-03-28", "2026-03-29", "2026-03-30", "2026-03-31", "2026-04-01", "2026-04-02", "2026-04-03", "2026-04-04", "2026-04-05", "2026-04-06", "2026-04-07", "2026-04-08", "2026-04-09", "2026-04-10", "2026-04-11", "2026-04-12", "2026-04-13", "2026-04-14", "2026-04-15", "2026-04-16", "2026-04-17", "2026-04-18", "2026-04-19", "2026-04-20", "2026-04-21", "2026-04-22", "2026-04-23", "2026-04-24", "2026-04-25", "2026-04-26", "2026-04-27", "2026-04-28", "2026-04-29", "2026-04-30", "2026-05-01", "2026-05-02", "2026-05-03", "2026-05-04", "2026-05-05", "2026-05-06", "2026-05-07", "2026-05-08", "2026-05-09", "2026-05-10", "2026-05-11", "2026-05-12", "2026-05-13", "2026-05-14", "2026-05-15", "2026-05-16", "2026-05-17", "2026-05-18", "2026-05-19", "2026-05-20", "2026-05-21", "2026-05-22", "2026-05-23", "2026-05-24", "2026-05-25", "2026-05-26", "2026-05-27", "2026-05-28", "2026-05-29", "2026-05-30", "2026-05-31", "2026-06-01", "2026-06-02", "2026-06-03", "2026-06-04", "2026-06-05", "2026-06-06", "2026-06-07", "2026-06-08", "2026-06-09", "2026-06-10", "2026-06-11", "2026-06-12", "2026-06-13", "2026-06-14", "2026-06-15", "2026-06-16", "2026-06-17", "2026-06-18", "2026-06-19", "2026-06-20", "2026-06-21", "2026-06-22", "2026-06-23", "2026-06-24", "2026-06-25", "2026-06-26", "2026-06-27", "2026-06-28"],
+    datasets: [{
+      label: 'Stars per day',
+      data: [253, 130, 83, 94, 104, 61, 33, 12, 11, 6, 4, 6, 5, 15, 17, 15, 6, 3, 5, 8, 2, 7, 4, 30, 46, 13, 415, 1234, 1712, 1240, 862, 463, 254, 258, 155, 317, 231, 203, 124, 91, 102, 115, 148, 116, 129, 90, 58, 93, 140, 373, 369, 176, 100, 111, 164, 154, 142, 105, 101, 83, 80, 113, 102, 148, 180, 316, 356, 128, 146, 168, 132, 169, 155, 75, 86, 129, 143, 138, 189, 200, 133, 99, 116, 110, 130, 104, 145, 105, 93, 125, 123, 102, 87, 69, 48, 63, 49, 77, 137, 108, 70, 127, 147, 120, 108, 106, 123, 121, 78, 195, 161, 150, 126, 152, 127, 91, 134, 128, 179, 209, 166, 127, 83, 122, 123, 137, 153, 144, 115, 103, 98, 189, 149, 149, 159, 133, 81, 132, 164, 149, 113, 139, 104, 66, 80, 105, 130, 209, 195, 262, 175, 73],
+      backgroundColor: [253, 130, 83, 94, 104, 61, 33, 12, 11, 6, 4, 6, 5, 15, 17, 15, 6, 3, 5, 8, 2, 7, 4, 30, 46, 13, 415, 1234, 1712, 1240, 862, 463, 254, 258, 155, 317, 231, 203, 124, 91, 102, 115, 148, 116, 129, 90, 58, 93, 140, 373, 369, 176, 100, 111, 164, 154, 142, 105, 101, 83, 80, 113, 102, 148, 180, 316, 356, 128, 146, 168, 132, 169, 155, 75, 86, 129, 143, 138, 189, 200, 133, 99, 116, 110, 130, 104, 145, 105, 93, 125, 123, 102, 87, 69, 48, 63, 49, 77, 137, 108, 70, 127, 147, 120, 108, 106, 123, 121, 78, 195, 161, 150, 126, 152, 127, 91, 134, 128, 179, 209, 166, 127, 83, 122, 123, 137, 153, 144, 115, 103, 98, 189, 149, 149, 159, 133, 81, 132, 164, 149, 113, 139, 104, 66, 80, 105, 130, 209, 195, 262, 175, 73].map(v => v > 3000 ? '#f85149' : v > 1000 ? '#d29922' : '#58a6ff'),
+      borderRadius: 3,
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: {legend:{display:false}},
+    scales: {
+      x: {ticks:{color:'#8b949e',maxRotation:45},grid:{color:'#21262d'}},
+      y: {ticks:{color:'#8b949e'},grid:{color:'#21262d'},beginAtZero:true}
+    }
+  }
+});
+
+new Chart(document.getElementById('ageChart'), {
+  type: 'bar',
+  data: {
+    labels: ["0-1yr", "1-3yr", "3-5yr", "5-10yr", "10-15yr", "15+yr"],
+    datasets: [{
+      label: 'Accounts',
+      data: [5.0, 16.5, 12.0, 24.5, 32.0, 10.0],
+      backgroundColor: ['#d29922','#d29922','#d29922','#58a6ff','#58a6ff','#3fb950'],
+      borderRadius: 3,
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: {legend:{display:false}},
+    scales: {
+      x: {ticks:{color:'#8b949e'},grid:{color:'#21262d'}},
+      y: {ticks:{color:'#8b949e',callback:v=>v+'%'},grid:{color:'#21262d'},beginAtZero:true,max:60}
+    }
+  }
+});
+</script>
+</body>
+</html>

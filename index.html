@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StarScout Reports</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#e6edf3;line-height:1.6}
+.container{max-width:720px;margin:0 auto;padding:24px 16px}
+h1{font-size:1.8rem;margin-bottom:4px}
+.subtitle{color:#8b949e;margin-bottom:24px}
+.repo{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;transition:border-color .2s}
+.repo:hover{border-color:#58a6ff}
+.repo .name{color:#58a6ff;font-weight:600;font-size:1.05rem}
+.repo .desc{color:#8b949e;font-size:.85rem;margin-top:2px}
+.repo .meta{text-align:right;color:#8b949e;font-size:.85rem;white-space:nowrap}
+.repo .meta .stars{color:#d29922;font-weight:600}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.75rem;margin-left:6px}
+.badge.danger{background:#f8514920;color:#f85149;border:1px solid #f8514940}
+.badge.warn{background:#d2992220;color:#d29922;border:1px solid #d2992240}
+.badge.ok{background:#3fb95020;color:#3fb950;border:1px solid #3fb95040}
+.footer{text-align:center;color:#484f58;font-size:.85rem;padding:32px 0;border-top:1px solid #21262d;margin-top:32px}
+a{text-decoration:none}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🔍 StarScout Reports</h1>
+  <p class="subtitle">GitHub star forensics — detecting suspicious star activity</p>
+
+  <a href="reports/zarazhangrui_frontend-slides/">
+    <div class="repo">
+      <div>
+        <div class="name">zarazhangrui/frontend-slides</div>
+        <div class="desc">Create beautiful slides on the web using a coding agent's frontend skills</div>
+      </div>
+      <div class="meta">
+        <div class="stars">23.6k ⭐</div>
+        <span class="badge danger">suspicious</span>
+      </div>
+    </div>
+  </a>
+
+  <a href="reports/santifer_career-ops/">
+    <div class="repo">
+      <div>
+        <div class="name">santifer/career-ops</div>
+        <div class="desc">AI-powered job search system built on Claude Code</div>
+      </div>
+      <div class="meta">
+        <div class="stars">54.1k ⭐</div>
+        <span class="badge danger">suspicious</span>
+      </div>
+    </div>
+  </a>
+
+  <a href="reports/mattpocock_skills/">
+    <div class="repo">
+      <div>
+        <div class="name">mattpocock/skills</div>
+        <div class="desc">Skills for Real Engineers. Straight from my .claude directory.</div>
+      </div>
+      <div class="meta">
+        <div class="stars">136.8k ⭐</div>
+        <span class="badge ok">likely organic</span>
+      </div>
+    </div>
+  </a>
+
+  <div class="footer">
+    Powered by <a href="https://github.com/hehao98/starscout" style="color:#58a6ff">StarScout</a> · Reports generated with <code>starcheck</code>
+  </div>
+</div>
+</body>
+</html>
